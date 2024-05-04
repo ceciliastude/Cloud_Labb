@@ -1,1 +1,2 @@
-# Cloud_Labb1
+# Cloud-Labb Inlämning 1: Webbshop API
+### By Cecilia & Maja
