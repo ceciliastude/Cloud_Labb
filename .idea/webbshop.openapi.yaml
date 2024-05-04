@@ -1,0 +1,7 @@
+openapi: 3.0.1
+info:
+  title: Webbshop API
+  description: >
+    Webbshop API, where you can fetch/create/update/delete data on products and customer carts.
+  version: 1.0.0
+paths:

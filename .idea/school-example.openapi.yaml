@@ -1,0 +1,88 @@
+openapi: 3.0.1
+info:
+  title: School API
+  description: >
+    This is a REpresentational State Transfer (REST) API that is basically a CRUD interface.  <br>
+    These APIs are the absolutely most simple types you can come across, where we basically use a API only for data storage. <br>
+    However, it is important to remember that REST != CRUD
+  version: 1.0.0
+paths:
+  /students:
+    get:
+      parameters:
+        - in: query
+          name: name
+          schema:
+            type: string
+          description: Filter students by name
+      responses:
+        200:
+          description: Students response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Student'
+    post:
+      summary: Create a new student
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Student'
+        required: true
+      responses:
+        200:
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Student'
+        400:
+          description: Bad request
+
+components:
+  schemas:
+    Student:
+      type: object
+      description: Representation of a Student Resource
+      required:
+        - id
+        - name
+        - address
+      properties:
+        id:
+          type: string
+        name:
+          $ref: '#/components/schemas/Name'
+        addresses:
+          description: "A list of addresses to student"
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+
+    Name:
+      type: object
+      required:
+        - firstName
+        - lastName
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+
+    Address:
+      type: object
+      required:
+        - streetName
+        - postCode
+        - city
+      properties:
+        streetName:
+          type: string
+        postCode:
+          type: integer
+        city:
+          type: string
