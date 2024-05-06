@@ -91,6 +91,31 @@ paths:
             Cannot update cart:
             - Invalid productId or cartId
             - Quantity limit unspecified or exceeded
+    delete:
+      summary: Remove a product from the cart
+      parameters:
+        - in: path
+          name: cartId
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: productId
+          schema:
+            type: integer
+          required: true
+          description: The ID of the product to remove from the cart
+      responses:
+        '200':
+          description: Product removed from the cart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          description: |
+            Cannot remove product from cart:
+            - Invalid productId or cartId
 
 
 components:
