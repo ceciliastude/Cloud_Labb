@@ -4,4 +4,143 @@ info:
   description: >
     Webbshop API, where you can fetch/create/update/delete data on products and customer carts.
   version: 1.0.0
+
 paths:
+  /products:
+    get:
+      parameters:
+        - in: query
+          name: name
+          schema:
+            type: string
+          description: Filter products by name
+      responses:
+        '200':
+          description: Fetching products...
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '400':
+          description: Cannot fetch products, invalid name
+
+    post:
+      summary: Create a new product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+      responses:
+        '200':
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Cannot create product, invalid datatype(s)
+
+
+  /cart:
+    post:
+      summary: Create an empty cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Cart'
+      responses:
+        '200':
+          description: Empty cart created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          description: Cannot create cart, cartId or currency not specified
+
+  /cart/{cartId}/addProduct:
+    post:
+      summary: Add a product to the cart
+      parameters:
+        - in: path
+          name: cartId
+          schema:
+            type: integer
+          required: true  # Corrected requirement definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+      responses:
+        '200':
+          description: Cart updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          description: |
+            Cannot update cart:
+            - Invalid productId or cartId
+            - Quantity limit unspecified or exceeded
+
+
+components:
+  schemas:
+    Product:
+      type: object
+      description: Information about a specific product
+      required:
+        - productId
+        - name
+        - description
+        - price
+        - quantityInStock
+      properties:
+        productId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        quantityInStock:
+          type: integer
+
+    Cart:
+      type: object
+      description: Information about a customer's cart
+      required:
+        - cartId
+        - currency
+      properties:
+        cartId:
+          type: integer
+        currency:
+          type: string
+          enum: [EUR, USD, SEK, GBP, JPY]
+          # Just to name some example currencies. Can be adjusted to support other currencies
+        Products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+          nullable: true
+      allOf:
+        - type: object
+          properties:
+            totalCosts:
+              type: string
+              default: "0.00 {{currency}}"
+              description: "Total cost of all products in the cart"
+              readOnly: true
+          required:
+            - totalCosts
