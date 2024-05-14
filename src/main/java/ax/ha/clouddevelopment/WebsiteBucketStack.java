@@ -3,11 +3,16 @@ package ax.ha.clouddevelopment;
 import software.amazon.awscdk.*;
 import software.amazon.awscdk.services.iam.AnyPrincipal;
 import software.amazon.awscdk.services.iam.Effect;
+import software.amazon.awscdk.services.route53.*;
+import software.amazon.awscdk.services.route53.targets.BucketWebsiteTarget;
 import software.amazon.awscdk.services.s3.BlockPublicAccess;
 import software.amazon.awscdk.services.s3.Bucket;
+import software.amazon.awscdk.services.s3.deployment.Source;
 import software.constructs.Construct;
 import software.amazon.awscdk.services.iam.PolicyStatement;
+import software.amazon.awscdk.services.s3.deployment.BucketDeployment;
 
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
@@ -44,7 +49,27 @@ public class WebsiteBucketStack extends Stack {
                 ))
                 .build();
 
-        siteBucket.addToResourcePolicy(PolicyStatement.Builder.create().build());
+        siteBucket.addToResourcePolicy(sitePolicyStatement);
+
+        /* Specifiera källan för filerna som ska bli deployed och bucketen var filerna kopieras till, som sedan laddas upp
+        * under deployment processen. cdk.out innehåller alla filer som är nödvändiga för deployment, inklusive filerna som
+        * har laddats upp med bucketdeployment*/
+
+        BucketDeployment deployment = BucketDeployment.Builder.create(this, "DeployWebsite")
+                .sources(List.of(Source.asset("src/main/resources/website")))
+                .destinationBucket(siteBucket)
+                .build();
+
+        RecordSet recordSet = RecordSet.Builder.create(this, "MyRecordSet")
+                .recordType(RecordType.A)
+                .target(RecordTarget.fromAlias(new BucketWebsiteTarget(siteBucket)))
+                .zone(HostedZone.fromHostedZoneAttributes(this, "MyHostedZone", HostedZoneAttributes.builder()
+                        .zoneName("cloud-ha.com")
+                        .hostedZoneId("Z0413857YT73A0A8FRFF")
+                        .build()))
+                .recordName("cecilia-maja.cloud-ha.com")
+                .build();
+
 
 
         // Bucket ARN CfnOutput variable. This is helpful for a later stage when simply wanting
