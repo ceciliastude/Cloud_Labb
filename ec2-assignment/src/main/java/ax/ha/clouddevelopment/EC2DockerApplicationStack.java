@@ -8,9 +8,16 @@ import software.amazon.awscdk.services.elasticloadbalancingv2.*;
 import software.amazon.awscdk.services.elasticloadbalancingv2.targets.InstanceTarget;
 import software.amazon.awscdk.services.route53.*;
 import software.amazon.awscdk.services.route53.targets.LoadBalancerTarget;
+import software.amazon.awscdk.services.rds.*;
+import software.amazon.awscdk.RemovalPolicy;
+import software.amazon.awscdk.CfnOutput;
+import software.amazon.awscdk.CfnOutputProps;
 import software.constructs.Construct;
+import software.amazon.awscdk.services.secretsmanager.Secret;
+import software.amazon.awscdk.services.secretsmanager.SecretStringGenerator;
 
 import java.util.Arrays;
+import java.util.List;
 
 public class EC2DockerApplicationStack extends Stack {
 
@@ -19,9 +26,19 @@ public class EC2DockerApplicationStack extends Stack {
             .zoneName("cloud-ha.com")
             .build());
 
-    private final IVpc vpc = Vpc.fromLookup(this, "MyVpc", VpcLookupOptions.builder()
-            .isDefault(true)
-            .build());
+    private final Vpc vpc = Vpc.Builder.create(this, "MyVpc")
+            .maxAzs(3)  // Default is all AZs in the region
+            .subnetConfiguration(Arrays.asList(
+                    SubnetConfiguration.builder()
+                            .subnetType(SubnetType.PUBLIC)
+                            .name("Public")
+                            .build(),
+                    SubnetConfiguration.builder()
+                            .subnetType(SubnetType.PRIVATE_WITH_EGRESS)
+                            .name("Private")
+                            .build()
+            ))
+            .build();
 
     public EC2DockerApplicationStack(final Construct scope, final String id, final StackProps props, final String groupName) {
         super(scope, id, props);
@@ -41,10 +58,48 @@ public class EC2DockerApplicationStack extends Stack {
                 ))
                 .build();
 
+        // Secret for the database credentials
+        Secret dbSecret = Secret.Builder.create(this, "DBSecret")
+                .secretName("postgresCredentialsNew")  // Change this to a unique name
+                .description("Postgres credentials")
+                .generateSecretString(SecretStringGenerator.builder()
+                        .secretStringTemplate("{\"username\":\"master\"}")
+                        .generateStringKey("password")
+                        .passwordLength(16)
+                        .excludeCharacters("/@\" ")
+                        .build())
+                .build();
+
+        // Security Group for the RDS instance
+        SecurityGroup databaseSecurityGroup = SecurityGroup.Builder.create(this, "DatabaseSecurityGroup")
+                .vpc(vpc)
+                .allowAllOutbound(true)
+                .build();
+
+        databaseSecurityGroup.addIngressRule(securityGroup, Port.tcp(5432), "Allow postgres access from EC2");
+
+        // RDS Database Instance
+        DatabaseInstance dbInstance = DatabaseInstance.Builder.create(this, "DBInstance")
+                .engine(DatabaseInstanceEngine.postgres(PostgresInstanceEngineProps.builder()
+                        .version(PostgresEngineVersion.VER_12_5)
+                        .build()))
+                .vpc(vpc)
+                .vpcSubnets(SubnetSelection.builder()
+                        .subnetType(SubnetType.PRIVATE_WITH_EGRESS)
+                        .build())
+                .credentials(Credentials.fromSecret(dbSecret))
+                .instanceType(software.amazon.awscdk.services.ec2.InstanceType.of(InstanceClass.BURSTABLE3, InstanceSize.MICRO))
+                .removalPolicy(RemovalPolicy.DESTROY)
+                .securityGroups(List.of(databaseSecurityGroup))
+                .allocatedStorage(20)
+                .build();
+
+        dbInstance.getConnections().allowFrom(securityGroup, Port.tcp(5432));
+
         // EC2 instance
         Instance ec2Instance = Instance.Builder.create(this, "EC2Instance")
-                .instanceType(InstanceType.of(InstanceClass.BURSTABLE3, InstanceSize.MICRO))
-                .machineImage(MachineImage.latestAmazonLinux())
+                .instanceType(software.amazon.awscdk.services.ec2.InstanceType.of(InstanceClass.BURSTABLE3, InstanceSize.MICRO))
+                .machineImage(MachineImage.latestAmazonLinux2())  // Updated to latest Amazon Linux 2
                 .vpc(vpc)
                 .securityGroup(securityGroup)
                 .role(role)
@@ -58,7 +113,8 @@ public class EC2DockerApplicationStack extends Stack {
                 "yum install docker -y",
                 "sudo systemctl start docker",
                 "aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 292370674225.dkr.ecr.eu-north-1.amazonaws.com",
-                "docker run -d --name my-application -p 80:8080 292370674225.dkr.ecr.eu-north-1.amazonaws.com/webshop-api:latest"
+                "DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id postgresCredentialsNew --query SecretString --output text --region eu-north-1 | jq -r .password)",
+                "docker run -d --name my-application -p 80:8080 -e DB_URL=jdbc:postgresql://" + dbInstance.getDbInstanceEndpointAddress() + ":5432 -e DB_USERNAME=master -e DB_PASSWORD=$DB_PASSWORD -e SPRING_PROFILES_ACTIVE=postgres 292370674225.dkr.ecr.eu-north-1.amazonaws.com/webshop-api:latest"
         );
 
         // Application Load Balancer
@@ -89,5 +145,10 @@ public class EC2DockerApplicationStack extends Stack {
                 .recordName(groupName + "-api")
                 .target(RecordTarget.fromAlias(new LoadBalancerTarget(alb)))
                 .build();
+
+        new CfnOutput(this, "database-endpoint", CfnOutputProps.builder()
+                .value(dbInstance.getDbInstanceEndpointAddress())
+                .description("Database Endpoint: ")
+                .build());
     }
 }
